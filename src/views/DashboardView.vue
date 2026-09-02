@@ -9,8 +9,8 @@ import {
 } from 'lucide-vue-next';
 import InventoryDeck from '../components/InventoryDeck.vue';
 import FarmAnalytics from '../components/FarmAnalytics.vue';
-import { exportToExcelTable } from '../utils/excelExporter';
 import { supabase } from '../lib/supabaseClient';
+import { exportPreOrganizedExcel } from '../utils/excelExporter';
 
 const router = useRouter();
 const currentTab = ref('dashboard');
@@ -216,7 +216,70 @@ const dynamicAnalyticsStats = computed(() => {
   };
 });
 
-const handleExcelExport = async (type) => { /* export logic */ };
+const handleExcelExport = async (type) => {
+  try {
+    if (type === 'Survival') {
+      const survival = aggregatedSurvivalReport.value || {};
+      const stats = dynamicAnalyticsStats.value || {};
+
+      const sections = [
+        {
+          title: 'Executive Summary Overview',
+          data: [
+            { 'Metric': 'Timeframe', 'Value': reportTimeframe.value },
+            { 'Metric': 'Overall Survival Rate', 'Value': survival.survival_rate || '0%' },
+            { 'Metric': 'Health Index', 'Value': stats.healthIndex || '100%' },
+            { 'Metric': 'Loss Rate', 'Value': stats.lossRate || '0%' }
+          ]
+        },
+        {
+          title: 'Stock Breakdown Table',
+          data: [
+            { 'Category': 'Total Managed Stock', 'Quantity': survival.total_units || 0, 'Unit': 'Units' },
+            { 'Category': 'Surviving Livestock', 'Quantity': survival.livestock_alive || 0, 'Unit': 'Heads' },
+            { 'Category': 'Surviving Seedlings', 'Quantity': survival.seedlings_alive || 0, 'Unit': 'Units' },
+            { 'Category': 'Total Mortality / Loss', 'Quantity': survival.dead_wilted_loss || 0, 'Unit': 'Units' }
+          ]
+        }
+      ];
+
+      exportPreOrganizedExcel(sections, `${reportTimeframe.value}_Survival_Organized_Report`, 'Survival Analysis');
+
+    } else if (type === 'Production') {
+      const yields = aggregatedProductionReport.value || [];
+      const harvests = filteredDailyHarvests.value || [];
+
+      const sections = [
+        {
+          title: `${reportTimeframe.value} Aggregated Yield Totals`,
+          data: yields.map(y => ({
+            'Item Name': y.name,
+            'Type': y.type,
+            'Total Yield': y.total_quantity,
+            'Unit': y.unit,
+            'Condition Status': y.condition || 'Intact'
+          }))
+        },
+        {
+          title: `Daily Harvest Logs (${selectedDate.value})`,
+          data: harvests.map(h => ({
+            'Item / Produce': h.item_name,
+            'Category Type': h.type,
+            'Logged Quantity': h.quantity,
+            'Unit': h.unit,
+            'Egg Condition': h.egg_condition || 'N/A',
+            'Timestamp': h.logged_at || h.created_at || 'N/A'
+          }))
+        }
+      ];
+
+      exportPreOrganizedExcel(sections, `${reportTimeframe.value}_Production_Organized_Report`, 'Production Analysis');
+    }
+  } catch (error) {
+    console.error('Organized Export Failed:', error);
+    alert(`Export Error: ${error.message}`);
+  }
+};
 
 onMounted(() => {
   const savedUser = localStorage.getItem('user');

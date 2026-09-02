@@ -1,49 +1,58 @@
-import ExcelJS from 'exceljs';
+import * as XLSX from 'xlsx';
 
-export const exportToExcelTable = async ({ filename, sheetName, columns, data }) => {
-  const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet(sheetName);
+/**
+ * Exports multiple pre-organized data tables into a single formatted Excel sheet
+ * @param {Array<{title: string, data: Array<Object>}>} sections - Array of table sections
+ * @param {string} fileName - Output file name without extension
+ * @param {string} sheetName - Excel sheet name
+ */
+export const exportPreOrganizedExcel = (sections, fileName = 'Report', sheetName = 'Summary') => {
+  try {
+    const workbook = XLSX.utils.book_new();
+    const sheetData = [];
 
-  // 1. Add Data Rows
-  worksheet.addRows(data.map(item => columns.map(col => item[col.key] ?? '')));
+    sections.forEach(section => {
+      // 1. Add Section Title
+      sheetData.push([section.title.toUpperCase()]);
+      
+      if (!section.data || section.data.length === 0) {
+        sheetData.push(['No data available']);
+        sheetData.push([]); // Blank row spacer
+        return;
+      }
 
-  // 2. Format as Native Excel Table
-  worksheet.addTable({
-    name: sheetName.replace(/\s+/g, '_'),
-    ref: 'A1',
-    headerRow: true,
-    totalsRow: false,
-    style: {
-      theme: 'TableStyleMedium9', // Built-in Excel green table theme
-      showRowStripes: true,
-    },
-    columns: columns.map(col => ({ name: col.header, filterButton: true })),
-    rows: data.map(item => columns.map(col => item[col.key] ?? '')),
-  });
+      // 2. Add Table Column Headers
+      const headers = Object.keys(section.data[0]);
+      sheetData.push(headers);
 
-  // 3. Auto-fit Column Widths for clean display
-  worksheet.columns.forEach((column, index) => {
-    const colHeader = columns[index]?.header || '';
-    let maxLen = colHeader.length;
-    
-    data.forEach(row => {
-      const val = String(row[columns[index]?.key] ?? '');
-      if (val.length > maxLen) maxLen = val.length;
+      // 3. Add Table Data Rows
+      section.data.forEach(row => {
+        sheetData.push(headers.map(header => row[header]));
+      });
+
+      // 4. Add Empty Spacing Rows Between Tables
+      sheetData.push([]); 
+      sheetData.push([]); 
     });
 
-    column.width = Math.max(maxLen + 4, 12);
-  });
+    // Generate Worksheet
+    const worksheet = XLSX.utils.aoa_to_sheet(sheetData);
 
-  // 4. Generate & Download .xlsx File
-  const buffer = await workbook.xlsx.writeBuffer();
-  const blob = new Blob([buffer], { 
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-  });
-  
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `${filename}.xlsx`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+    // Dynamic Column Width Calculation
+    const colWidths = sheetData.reduce((acc, row) => {
+      row.forEach((val, colIndex) => {
+        const len = val ? val.toString().length : 10;
+        acc[colIndex] = Math.max(acc[colIndex] || 10, len + 3);
+      });
+      return acc;
+    }, []);
+
+    worksheet['!cols'] = colWidths.map(w => ({ wch: w }));
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+    XLSX.writeFile(workbook, `${fileName}.xlsx`);
+  } catch (error) {
+    console.error('Pre-organized Export Error:', error);
+    throw error;
+  }
 };

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { Plus, Search as SearchIcon, Edit2, Trash2, Boxes, Sprout, Bird, Egg, Calendar, Tag, Loader2 } from 'lucide-vue-next';
-import { supabase } from '@/lib/supabaseClient'; // Adjust path if necessary
+import { supabase } from '../lib/supabaseClient'; // Adjust path if necessary
 
 // Loading & UI States
 const isLoading = ref(true);
@@ -137,7 +137,18 @@ const openInventoryModal = (item = null) => {
 };
 
 const saveInventoryItem = async () => {
-  const payload = { ...inventoryForm.value };
+  // Format the payload explicitly to avoid sending unexpected key-value pairs
+  const payload = {
+    batch_no: inventoryForm.value.batch_no || null,
+    name: inventoryForm.value.name,
+    category: inventoryForm.value.category,
+    stock_count: Number(inventoryForm.value.stock_count) || 0,
+    location: inventoryForm.value.location,
+    production_date: inventoryForm.value.production_date || null,
+    expiry_date: inventoryForm.value.expiry_date || null,
+    survival_status: inventoryForm.value.survival_status,
+    health_status: inventoryForm.value.health_status,
+  };
 
   if (isEditing.value) {
     const { error } = await supabase
@@ -146,15 +157,18 @@ const saveInventoryItem = async () => {
       .eq('id', currentId.value);
 
     if (error) {
+      console.error('Supabase Update Error:', error);
       alert('Error updating item: ' + error.message);
       return;
     }
   } else {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('inventory')
-      .insert([payload]);
+      .insert([payload])
+      .select(); // Returns inserted row for immediate confirmation
 
     if (error) {
+      console.error('Supabase Insert Error:', error);
       alert('Error creating item: ' + error.message);
       return;
     }
@@ -163,7 +177,6 @@ const saveInventoryItem = async () => {
   await fetchInventoryItems();
   isInventoryModalOpen.value = false;
 };
-
 const deleteInventoryItem = async (id) => {
   if (confirm('Are you sure you want to delete this record?')) {
     const { error } = await supabase
@@ -180,15 +193,24 @@ const deleteInventoryItem = async (id) => {
 };
 
 // ----------------------------------------------------
-// ACTIONS (PRODUCTION)
+// ACTIONS (PRODUCTION YIELD LOGGING)
 // ----------------------------------------------------
 const saveProductionRecord = async () => {
+  if (!productionForm.value.item_name || !productionForm.value.quantity) {
+    alert('Please enter an item name and quantity.');
+    return;
+  }
+
   const today = new Date().toISOString().split('T')[0];
+
   const payload = {
     type: productionForm.value.type,
     item_name: productionForm.value.item_name,
-    egg_size: productionForm.value.type === 'Livestock' ? productionForm.value.egg_size : null,
-    quantity: productionForm.value.quantity,
+    // Store egg size only if type is Livestock or Egg production
+    egg_size: productionForm.value.type === 'Livestock' || productionForm.value.type === 'Egg' 
+      ? productionForm.value.egg_size 
+      : null,
+    quantity: Number(productionForm.value.quantity) || 0,
     unit: productionForm.value.unit,
     date: today,
   };
@@ -198,12 +220,22 @@ const saveProductionRecord = async () => {
     .insert([payload]);
 
   if (error) {
+    console.error('Supabase Yield Log Error:', error);
     alert('Error logging output: ' + error.message);
     return;
   }
 
+  // Refresh list and reset form
   await fetchProductionYields();
-  productionForm.value = { type: 'Crop', item_name: '', egg_size: 'Large', quantity: 0, unit: 'Pieces' };
+  
+  productionForm.value = { 
+    type: 'Crop', 
+    item_name: '', 
+    egg_size: 'Large', 
+    quantity: 0, 
+    unit: 'Pieces' 
+  };
+  
   isProductionModalOpen.value = false;
 };
 </script>
