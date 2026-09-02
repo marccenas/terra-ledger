@@ -33,7 +33,7 @@ const items = ref([
 // Timeframe Filter State ('Weekly' | 'Monthly')
 const reportTimeframe = ref('Weekly');
 
-// 3. Compute Aggregated Production Summary (Display state for Template Deck)
+// 3. Compute Aggregated Production Summary
 const aggregatedProductionReport = computed(() => {
   const summary = {};
   productionYields.value.forEach(p => {
@@ -53,7 +53,7 @@ const aggregatedProductionReport = computed(() => {
   return Object.values(summary);
 });
 
-// 4. Compute Aggregated Inventory & Survival Tracking Summary (Display state for Template Deck)
+// 4. Compute Aggregated Inventory & Survival Tracking Summary
 const aggregatedSurvivalReport = computed(() => {
   const summary = {
     total_units: 0,
@@ -87,12 +87,11 @@ const aggregatedSurvivalReport = computed(() => {
   return summary;
 });
 
-// Separated & Categorized CSV Export Handler
+// Categorized CSV Export Handler
 const exportToCSV = (filename, sourceData) => {
   let exportRows = [];
 
   if (filename.includes('Production')) {
-    // Separate by Production Type (Livestock vs Crop)
     productionYields.value.forEach(p => {
       const multiplier = reportTimeframe.value === 'Monthly' ? 4 : 1;
       const itemName = `${p.item_name}${p.egg_condition ? ' (' + p.egg_condition + ')' : ''}`;
@@ -105,11 +104,9 @@ const exportToCSV = (filename, sourceData) => {
         'Unit': p.unit
       });
     });
-    // Sort rows so categories group cleanly (Crop, then Livestock)
     exportRows.sort((a, b) => a['Category'].localeCompare(b['Category']));
 
   } else if (filename.includes('Survival')) {
-    // Separate by Category (Livestock vs Seedlings)
     const multiplier = reportTimeframe.value === 'Monthly' ? 3.7 : 1;
     
     const calculateCategoryStats = (categoryName, categoryFilter) => {
@@ -175,39 +172,46 @@ const handleSignOut = () => {
 <template>
   <div class="min-h-screen bg-slate-100/60 font-sans text-slate-800 pb-12">
     <!-- Top Glass Navigation Bar -->
-    <header class="glass-card !rounded-none border-x-0 border-t-0 px-8 py-3.5 sticky top-0 z-40">
-      <div class="max-w-6xl mx-auto flex justify-between items-center">
+    <header class="glass-card !rounded-none border-x-0 border-t-0 px-4 sm:px-8 py-3.5 sticky top-0 z-40">
+      <div class="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-0">
         
-        <div class="flex items-center gap-6">
+        <div class="flex items-center justify-between w-full sm:w-auto gap-4">
           <div class="flex items-center gap-2 font-bold text-slate-800 text-sm">
-            <div class="p-1.5 bg-emerald-700 text-white rounded-lg">
+            <div class="p-1.5 bg-emerald-700 text-white rounded-lg flex items-center justify-center">
               <Boxes class="w-4 h-4 text-white" />
             </div>
             Terra Ledger
           </div>
 
-          <!-- Section Switcher -->
-          <div class="flex items-center gap-1 bg-slate-200/50 p-1 rounded-xl text-xs font-semibold">
-            <button 
-              @click="currentTab = 'dashboard'"
-              :class="['px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition cursor-pointer', currentTab === 'dashboard' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900']"
-            >
-              <LayoutDashboard class="w-3.5 h-3.5" /> Dashboard
-            </button>
-            <button 
-              @click="currentTab = 'inventory'"
-              :class="['px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition cursor-pointer', currentTab === 'inventory' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900']"
-            >
-              <Boxes class="w-3.5 h-3.5" /> Inventory
+          <!-- Mobile User / Sign Out Quick View -->
+          <div class="flex sm:hidden items-center gap-2 text-xs">
+            <button @click="handleSignOut" class="p-1.5 text-slate-400 hover:text-rose-600 transition cursor-pointer" title="Sign Out">
+              <LogOut class="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        <!-- User Profile & Logout -->
-        <div class="flex items-center gap-4 text-xs">
+        <!-- Section Switcher -->
+        <div class="flex items-center justify-center w-full sm:w-auto gap-1 bg-slate-200/50 p-1 rounded-xl text-xs font-semibold">
+          <button 
+            @click="currentTab = 'dashboard'"
+            :class="['flex-1 sm:flex-none px-3 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer', currentTab === 'dashboard' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900']"
+          >
+            <LayoutDashboard class="w-3.5 h-3.5" /> Dashboard
+          </button>
+          <button 
+            @click="currentTab = 'inventory'"
+            :class="['flex-1 sm:flex-none px-3 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer', currentTab === 'inventory' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900']"
+          >
+            <Boxes class="w-3.5 h-3.5" /> Inventory
+          </button>
+        </div>
+
+        <!-- Desktop User Profile & Logout -->
+        <div class="hidden sm:flex items-center gap-4 text-xs">
           <div class="text-right">
-            <p class="font-bold text-slate-800">{{ user.name }}</p>
-            <p class="text-slate-400">{{ user.farm }}</p>
+            <p class="font-bold text-slate-800">{{ user?.name || 'User' }}</p>
+            <p class="text-slate-400">{{ user?.farm || 'Farm' }}</p>
           </div>
           <button @click="handleSignOut" class="p-2 text-slate-400 hover:text-rose-600 transition cursor-pointer" title="Sign Out">
             <LogOut class="w-4 h-4" />
@@ -218,57 +222,59 @@ const handleSignOut = () => {
     </header>
 
     <!-- Main Content Area -->
-    <main class="max-w-6xl mx-auto px-8 pt-8">
+    <main class="max-w-6xl mx-auto px-4 sm:px-8 pt-6 sm:pt-8">
       <!-- DASHBOARD TAB -->
-      <div v-if="currentTab === 'dashboard'" class="space-y-8">
-        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div v-if="currentTab === 'dashboard'" class="space-y-6 sm:space-y-8">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h2 class="text-2xl font-bold text-slate-800">Farm Analytics</h2>
+            <h2 class="text-xl sm:text-2xl font-bold text-slate-800">Farm Analytics</h2>
             <p class="text-xs text-slate-500 mt-0.5">Real-time metrics, survival rate tracking, and periodic aggregate reports.</p>
           </div>
 
           <!-- Controls for Timeframe & CSV Exports -->
-          <div class="flex items-center gap-3">
-            <select v-model="reportTimeframe" class="glass-input px-3 py-2 text-xs font-semibold text-slate-700 cursor-pointer">
+          <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full md:w-auto">
+            <select v-model="reportTimeframe" class="glass-input px-3 py-2 text-xs font-semibold text-slate-700 cursor-pointer w-full sm:w-auto">
               <option value="Weekly">Weekly Report</option>
               <option value="Monthly">Monthly Report</option>
             </select>
 
-            <button 
-              @click="exportToCSV(`${reportTimeframe}_Survival_Report`, aggregatedSurvivalReport)"
-              class="px-3 py-2 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-sm"
-            >
-              <Download :size="14" /> {{ reportTimeframe }} Survival CSV
-            </button>
+            <div class="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto">
+              <button 
+                @click="exportToCSV(`${reportTimeframe}_Survival_Report`, aggregatedSurvivalReport)"
+                class="px-3 py-2 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm w-full"
+              >
+                <Download :size="14" /> <span class="truncate">{{ reportTimeframe }} Survival</span>
+              </button>
 
-            <button 
-              @click="exportToCSV(`${reportTimeframe}_Production_Report`, aggregatedProductionReport)"
-              class="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-sm"
-            >
-              <Download :size="14" /> {{ reportTimeframe }} Production CSV
-            </button>
+              <button 
+                @click="exportToCSV(`${reportTimeframe}_Production_Report`, aggregatedProductionReport)"
+                class="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm w-full"
+              >
+                <Download :size="14" /> <span class="truncate">{{ reportTimeframe }} Production</span>
+              </button>
+            </div>
           </div>
         </div>
 
         <!-- 1. WEEKLY & MONTHLY INVENTORY & SURVIVAL REPORT DECK -->
-        <div class="glass-card p-6 space-y-4">
-          <div class="flex items-center justify-between border-b border-slate-200/60 pb-3">
+        <div class="glass-card p-4 sm:p-6 space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/60 pb-3">
             <div class="flex items-center gap-2">
-              <CheckCircle2 class="text-emerald-700" :size="20" />
-              <h3 class="text-base font-bold text-slate-800">{{ reportTimeframe }} Inventory & Survival Tracking Report</h3>
+              <CheckCircle2 class="text-emerald-700 shrink-0" :size="20" />
+              <h3 class="text-sm sm:text-base font-bold text-slate-800">{{ reportTimeframe }} Inventory & Survival Tracking Report</h3>
             </div>
-            <span class="px-3 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full uppercase tracking-wider">
-              {{ reportTimeframe }} Survival Rate: {{ aggregatedSurvivalReport.survival_rate }}
+            <span class="self-start sm:self-auto px-3 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full uppercase tracking-wider">
+              Survival Rate: {{ aggregatedSurvivalReport?.survival_rate || '0%' }}
             </span>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 pt-1">
             <div class="p-4 bg-slate-50/90 rounded-2xl border border-slate-200/60">
               <div class="flex items-center justify-between">
                 <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Managed Stock</span>
                 <Boxes :size="16" class="text-slate-500" />
               </div>
-              <p class="text-2xl font-black text-slate-800 mt-2">{{ aggregatedSurvivalReport.total_units }} <span class="text-xs font-semibold text-slate-500">Units</span></p>
+              <p class="text-xl sm:text-2xl font-black text-slate-800 mt-2">{{ aggregatedSurvivalReport?.total_units || 0 }} <span class="text-xs font-semibold text-slate-500">Units</span></p>
               <p class="text-[11px] text-slate-500 mt-1">Combined Livestock & Seedling units</p>
             </div>
 
@@ -277,7 +283,7 @@ const handleSignOut = () => {
                 <span class="text-[10px] font-bold uppercase tracking-wider text-amber-600">Surviving Livestock</span>
                 <Bird :size="16" class="text-amber-600" />
               </div>
-              <p class="text-2xl font-black text-slate-800 mt-2">{{ aggregatedSurvivalReport.livestock_alive }} <span class="text-xs font-semibold text-slate-500">Heads</span></p>
+              <p class="text-xl sm:text-2xl font-black text-slate-800 mt-2">{{ aggregatedSurvivalReport?.livestock_alive || 0 }} <span class="text-xs font-semibold text-slate-500">Heads</span></p>
               <p class="text-[11px] text-emerald-600 font-semibold mt-1">100% Healthy & Active</p>
             </div>
 
@@ -286,7 +292,7 @@ const handleSignOut = () => {
                 <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Surviving Seedlings</span>
                 <Sprout :size="16" class="text-emerald-600" />
               </div>
-              <p class="text-2xl font-black text-slate-800 mt-2">{{ aggregatedSurvivalReport.seedlings_alive }} <span class="text-xs font-semibold text-slate-500">Units</span></p>
+              <p class="text-xl sm:text-2xl font-black text-slate-800 mt-2">{{ aggregatedSurvivalReport?.seedlings_alive || 0 }} <span class="text-xs font-semibold text-slate-500">Units</span></p>
               <p class="text-[11px] text-slate-500 mt-1">Active nursery growth</p>
             </div>
 
@@ -295,25 +301,25 @@ const handleSignOut = () => {
                 <span class="text-[10px] font-bold uppercase tracking-wider text-rose-600">Mortality / Wilt Loss</span>
                 <Skull :size="16" class="text-rose-600" />
               </div>
-              <p class="text-2xl font-black text-rose-700 mt-2">{{ aggregatedSurvivalReport.dead_wilted_loss }} <span class="text-xs font-semibold text-rose-500">Units</span></p>
+              <p class="text-xl sm:text-2xl font-black text-rose-700 mt-2">{{ aggregatedSurvivalReport?.dead_wilted_loss || 0 }} <span class="text-xs font-semibold text-rose-500">Units</span></p>
               <p class="text-[11px] text-rose-600 font-medium mt-1">{{ reportTimeframe }} logged losses</p>
             </div>
           </div>
         </div>
 
         <!-- 2. WEEKLY & MONTHLY PRODUCTION YIELD REPORT DECK -->
-        <div class="glass-card p-6 space-y-4">
-          <div class="flex items-center justify-between border-b border-slate-200/60 pb-3">
+        <div class="glass-card p-4 sm:p-6 space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/60 pb-3">
             <div class="flex items-center gap-2">
-              <BarChart3 class="text-emerald-700" :size="20" />
-              <h3 class="text-base font-bold text-slate-800">{{ reportTimeframe }} Production & Output Summary</h3>
+              <BarChart3 class="text-emerald-700 shrink-0" :size="20" />
+              <h3 class="text-sm sm:text-base font-bold text-slate-800">{{ reportTimeframe }} Production & Output Summary</h3>
             </div>
-            <span class="px-3 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full uppercase tracking-wider">
+            <span class="self-start sm:self-auto px-3 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full uppercase tracking-wider">
               {{ reportTimeframe }} Production
             </span>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 pt-1">
             <div 
               v-for="rep in aggregatedProductionReport" 
               :key="rep.name" 
@@ -327,13 +333,13 @@ const handleSignOut = () => {
                   {{ rep.type }}
                 </span>
                 <h4 class="text-xs font-bold text-slate-800 mt-1.5">{{ rep.name }}</h4>
-                <p class="text-xl font-black text-slate-800 mt-1">
+                <p class="text-lg sm:text-xl font-black text-slate-800 mt-1">
                   {{ rep.total_quantity }} <span class="text-xs font-semibold text-slate-500">{{ rep.unit }}</span>
                 </p>
               </div>
 
               <div :class="[
-                'p-2.5 rounded-xl text-white',
+                'p-2.5 rounded-xl text-white shrink-0',
                 rep.condition === 'Broken' ? 'bg-rose-600' :
                 rep.condition === 'Cracked' ? 'bg-amber-600' : 'bg-emerald-600'
               ]">
