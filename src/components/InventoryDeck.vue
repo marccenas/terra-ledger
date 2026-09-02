@@ -1,6 +1,14 @@
 <script setup>
-import { ref, computed } from 'vue';
-import { Plus, Search as SearchIcon, Edit2, Trash2, Boxes, Sprout, Bird, Egg, Calendar, Tag } from 'lucide-vue-next';
+import { ref, computed, onMounted } from 'vue';
+import { Plus, Search as SearchIcon, Edit2, Trash2, Boxes, Sprout, Bird, Egg, Calendar, Tag, Loader2 } from 'lucide-vue-next';
+import { supabase } from '@/lib/supabaseClient'; // Adjust path if necessary
+
+// Loading & UI States
+const isLoading = ref(true);
+
+// 1. Database Connected States (Initialized empty)
+const items = ref([]);
+const productionYields = ref([]);
 
 // Helper function to check if a date string is past today
 const isExpired = (dateStr) => {
@@ -9,118 +17,79 @@ const isExpired = (dateStr) => {
   return dateStr < today;
 };
 
-// 1. Centralized Inventory State (Updated with Batch Numbers & Dates)
-const items = ref([
-  { 
-    id: 1, 
-    name: 'Holstein Friesian Cow', 
-    category: 'Animal', 
-    stock_count: 14, 
-    location: 'Barn A - Pen 3', 
-    survival_status: 'Alive', 
-    health_status: 'Healthy', 
-    batch_no: 'LOT-LIV-001',
-    production_date: '2025-05-10',
-    expiry_date: '', // N/A for live animals or set to expected cycle date
-    last_updated: '9/1/2026, 8:30 AM' 
-  },
-  { 
-    id: 2, 
-    name: 'Dorper Sheep', 
-    category: 'Animal', 
-    stock_count: 28, 
-    location: 'Paddock 2', 
-    survival_status: 'Alive', 
-    health_status: 'Malnourished', 
-    batch_no: 'LOT-LIV-002',
-    production_date: '2025-11-20',
-    expiry_date: '',
-    last_updated: '9/1/2026, 9:15 AM' 
-  },
-  { 
-    id: 3, 
-    name: 'Roma Tomato Seedlings', 
-    category: 'Seedling', 
-    stock_count: 250, 
-    location: 'Greenhouse 1', 
-    survival_status: 'Alive', 
-    health_status: 'Healthy', 
-    batch_no: 'SEED-2026-08A',
-    production_date: '2026-08-15',
-    expiry_date: '2026-10-15',
-    last_updated: '8/31/2026, 4:00 PM' 
-  },
-  { 
-    id: 4, 
-    name: 'Wilted Bell Pepper Sprouts', 
-    category: 'Seedling', 
-    stock_count: 35, 
-    location: 'Greenhouse 2 - Tray 4', 
-    survival_status: 'Dead', 
-    health_status: 'Root Rot', 
-    batch_no: 'SEED-2026-07C',
-    production_date: '2026-07-01',
-    expiry_date: '2026-08-30',
-    last_updated: '9/1/2026, 10:00 AM' 
-  },
-  { 
-    id: 5, 
-    name: 'Hass Avocado Saplings', 
-    category: 'Seedling', 
-    stock_count: 5, 
-    location: 'Nursery Bed B', 
-    survival_status: 'Alive', 
-    health_status: 'Healthy', 
-    batch_no: 'SEED-2026-04F',
-    production_date: '2026-04-10',
-    expiry_date: '2027-04-10',
-    last_updated: '8/30/2026, 2:10 PM' 
-  },
-]);
+// ----------------------------------------------------
+// DATABASE FETCHING
+// ----------------------------------------------------
+const fetchInventoryItems = async () => {
+  const { data, error } = await supabase
+    .from('inventory')
+    .select('*')
+    .order('created_at', { ascending: false });
 
-// 2. Production Yields State
-const productionYields = ref([
-  { id: 1, type: 'Livestock', item_name: 'Fresh Hen Eggs', egg_size: 'Large', quantity: 45, unit: 'Trays', date: '2026-09-01' },
-  { id: 2, type: 'Livestock', item_name: 'Fresh Hen Eggs', egg_size: 'Medium', quantity: 20, unit: 'Trays', date: '2026-09-01' },
-  { id: 3, type: 'Crop', item_name: 'Roma Tomatoes', egg_size: null, quantity: 120, unit: 'Pieces', date: '2026-09-01' },
-  { id: 4, type: 'Crop', item_name: 'Bell Peppers (Green)', egg_size: null, quantity: 85, unit: 'Pieces', date: '2026-08-31' },
-]);
+  if (error) {
+    console.error('Error fetching inventory:', error.message);
+  } else {
+    items.value = data || [];
+  }
+};
 
-// Search & Category Filtering
+const fetchProductionYields = async () => {
+  const { data, error } = await supabase
+    .from('production_yields')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching production yields:', error.message);
+  } else {
+    productionYields.value = data || [];
+  }
+};
+
+onMounted(async () => {
+  isLoading.value = true;
+  await Promise.all([fetchInventoryItems(), fetchProductionYields()]);
+  isLoading.value = false;
+});
+
+// ----------------------------------------------------
+// SEARCH & FILTERING
+// ----------------------------------------------------
 const searchQuery = ref('');
 const activeCategory = ref('All');
 
-// Dynamic Metric Card Counts
 const animalCount = computed(() => 
   items.value
     .filter(i => i.category === 'Animal' && i.survival_status === 'Alive')
-    .reduce((acc, curr) => acc + curr.stock_count, 0)
+    .reduce((acc, curr) => acc + (curr.stock_count || 0), 0)
 );
 
 const seedlingCount = computed(() => 
   items.value
     .filter(i => i.category === 'Seedling' && i.survival_status === 'Alive')
-    .reduce((acc, curr) => acc + curr.stock_count, 0)
+    .reduce((acc, curr) => acc + (curr.stock_count || 0), 0)
 );
 
 const filteredItems = computed(() => {
   return items.value.filter(item => {
-    const matchesSearch = item.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-                          item.location.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-                          item.health_status.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-                          (item.batch_no && item.batch_no.toLowerCase().includes(searchQuery.value.toLowerCase()));
+    const query = searchQuery.value.toLowerCase();
+    const matchesSearch = (item.name?.toLowerCase().includes(query)) ||
+                          (item.location?.toLowerCase().includes(query)) ||
+                          (item.health_status?.toLowerCase().includes(query)) ||
+                          (item.batch_no?.toLowerCase().includes(query));
     const matchesCategory = activeCategory.value === 'All' || item.category === activeCategory.value;
     return matchesSearch && matchesCategory;
   });
 });
 
-// Modal Controls
+// ----------------------------------------------------
+// MODAL & FORM CONTROLS
+// ----------------------------------------------------
 const isInventoryModalOpen = ref(false);
 const isProductionModalOpen = ref(false);
 const isEditing = ref(false);
 const currentId = ref(null);
 
-// Forms
 const inventoryForm = ref({
   name: '',
   category: 'Seedling',
@@ -141,7 +110,9 @@ const productionForm = ref({
   unit: 'Pieces',
 });
 
-// Actions
+// ----------------------------------------------------
+// ACTIONS (INVENTORY)
+// ----------------------------------------------------
 const openInventoryModal = (item = null) => {
   if (item) {
     isEditing.value = true;
@@ -165,41 +136,73 @@ const openInventoryModal = (item = null) => {
   isInventoryModalOpen.value = true;
 };
 
-const saveInventoryItem = () => {
-  const timestamp = new Date().toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
-  
+const saveInventoryItem = async () => {
+  const payload = { ...inventoryForm.value };
+
   if (isEditing.value) {
-    const index = items.value.findIndex(i => i.id === currentId.value);
-    if (index !== -1) {
-      items.value[index] = { ...inventoryForm.value, id: currentId.value, last_updated: timestamp };
+    const { error } = await supabase
+      .from('inventory')
+      .update(payload)
+      .eq('id', currentId.value);
+
+    if (error) {
+      alert('Error updating item: ' + error.message);
+      return;
     }
   } else {
-    items.value.push({
-      id: Date.now(),
-      ...inventoryForm.value,
-      last_updated: timestamp,
-    });
+    const { error } = await supabase
+      .from('inventory')
+      .insert([payload]);
+
+    if (error) {
+      alert('Error creating item: ' + error.message);
+      return;
+    }
   }
+
+  await fetchInventoryItems();
   isInventoryModalOpen.value = false;
 };
 
-const deleteInventoryItem = (id) => {
+const deleteInventoryItem = async (id) => {
   if (confirm('Are you sure you want to delete this record?')) {
-    items.value = items.value.filter(i => i.id !== id);
+    const { error } = await supabase
+      .from('inventory')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      alert('Error deleting item: ' + error.message);
+    } else {
+      await fetchInventoryItems();
+    }
   }
 };
 
-const saveProductionRecord = () => {
+// ----------------------------------------------------
+// ACTIONS (PRODUCTION)
+// ----------------------------------------------------
+const saveProductionRecord = async () => {
   const today = new Date().toISOString().split('T')[0];
-  productionYields.value.unshift({
-    id: Date.now(),
+  const payload = {
     type: productionForm.value.type,
     item_name: productionForm.value.item_name,
     egg_size: productionForm.value.type === 'Livestock' ? productionForm.value.egg_size : null,
     quantity: productionForm.value.quantity,
     unit: productionForm.value.unit,
     date: today,
-  });
+  };
+
+  const { error } = await supabase
+    .from('production_yields')
+    .insert([payload]);
+
+  if (error) {
+    alert('Error logging output: ' + error.message);
+    return;
+  }
+
+  await fetchProductionYields();
   productionForm.value = { type: 'Crop', item_name: '', egg_size: 'Large', quantity: 0, unit: 'Pieces' };
   isProductionModalOpen.value = false;
 };
