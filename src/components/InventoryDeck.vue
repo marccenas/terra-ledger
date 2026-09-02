@@ -1,8 +1,15 @@
 <script setup>
 import { ref, computed } from 'vue';
-import { Plus, Search as SearchIcon, Edit2, Trash2, Boxes, Sprout, Bird, Egg } from 'lucide-vue-next';
+import { Plus, Search as SearchIcon, Edit2, Trash2, Boxes, Sprout, Bird, Egg, Calendar, Tag } from 'lucide-vue-next';
 
-// 1. Centralized Inventory State (Updated with Dead Seedlings)
+// Helper function to check if a date string is past today
+const isExpired = (dateStr) => {
+  if (!dateStr) return false;
+  const today = new Date().toISOString().split('T')[0];
+  return dateStr < today;
+};
+
+// 1. Centralized Inventory State (Updated with Batch Numbers & Dates)
 const items = ref([
   { 
     id: 1, 
@@ -12,6 +19,9 @@ const items = ref([
     location: 'Barn A - Pen 3', 
     survival_status: 'Alive', 
     health_status: 'Healthy', 
+    batch_no: 'LOT-LIV-001',
+    production_date: '2025-05-10',
+    expiry_date: '', // N/A for live animals or set to expected cycle date
     last_updated: '9/1/2026, 8:30 AM' 
   },
   { 
@@ -22,6 +32,9 @@ const items = ref([
     location: 'Paddock 2', 
     survival_status: 'Alive', 
     health_status: 'Malnourished', 
+    batch_no: 'LOT-LIV-002',
+    production_date: '2025-11-20',
+    expiry_date: '',
     last_updated: '9/1/2026, 9:15 AM' 
   },
   { 
@@ -32,6 +45,9 @@ const items = ref([
     location: 'Greenhouse 1', 
     survival_status: 'Alive', 
     health_status: 'Healthy', 
+    batch_no: 'SEED-2026-08A',
+    production_date: '2026-08-15',
+    expiry_date: '2026-10-15',
     last_updated: '8/31/2026, 4:00 PM' 
   },
   { 
@@ -42,6 +58,9 @@ const items = ref([
     location: 'Greenhouse 2 - Tray 4', 
     survival_status: 'Dead', 
     health_status: 'Root Rot', 
+    batch_no: 'SEED-2026-07C',
+    production_date: '2026-07-01',
+    expiry_date: '2026-08-30',
     last_updated: '9/1/2026, 10:00 AM' 
   },
   { 
@@ -52,6 +71,9 @@ const items = ref([
     location: 'Nursery Bed B', 
     survival_status: 'Alive', 
     health_status: 'Healthy', 
+    batch_no: 'SEED-2026-04F',
+    production_date: '2026-04-10',
+    expiry_date: '2027-04-10',
     last_updated: '8/30/2026, 2:10 PM' 
   },
 ]);
@@ -68,7 +90,7 @@ const productionYields = ref([
 const searchQuery = ref('');
 const activeCategory = ref('All');
 
-// Dynamic Metric Card Counts (Only counts ALIVE items for active stock)
+// Dynamic Metric Card Counts
 const animalCount = computed(() => 
   items.value
     .filter(i => i.category === 'Animal' && i.survival_status === 'Alive')
@@ -85,7 +107,8 @@ const filteredItems = computed(() => {
   return items.value.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
                           item.location.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-                          item.health_status.toLowerCase().includes(searchQuery.value.toLowerCase());
+                          item.health_status.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+                          (item.batch_no && item.batch_no.toLowerCase().includes(searchQuery.value.toLowerCase()));
     const matchesCategory = activeCategory.value === 'All' || item.category === activeCategory.value;
     return matchesSearch && matchesCategory;
   });
@@ -105,6 +128,9 @@ const inventoryForm = ref({
   location: '',
   survival_status: 'Alive',
   health_status: 'Healthy',
+  batch_no: '',
+  production_date: '',
+  expiry_date: '',
 });
 
 const productionForm = ref({
@@ -131,6 +157,9 @@ const openInventoryModal = (item = null) => {
       location: '',
       survival_status: 'Alive',
       health_status: 'Healthy',
+      batch_no: '',
+      production_date: '',
+      expiry_date: '',
     };
   }
   isInventoryModalOpen.value = true;
@@ -236,7 +265,7 @@ const saveProductionRecord = () => {
             <input 
               v-model="searchQuery" 
               type="text" 
-              placeholder="Filter name, location, condition..." 
+              placeholder="Filter batch #, name, location..." 
               class="w-full glass-input pl-10 pr-3 py-2 text-xs relative z-0" 
             />
           </div>
@@ -246,32 +275,61 @@ const saveProductionRecord = () => {
         </div>
       </div>
 
-      <div class="glass-card overflow-hidden">
+      <div class="glass-card overflow-x-auto">
         <table class="w-full text-left text-xs text-slate-600">
           <thead class="bg-slate-50/50 text-slate-700 uppercase font-semibold border-b border-slate-200/60">
             <tr>
+              <th class="px-5 py-3.5">Batch / Lot #</th>
               <th class="px-5 py-3.5">Name</th>
               <th class="px-5 py-3.5">Category</th>
               <th class="px-5 py-3.5">Quantity</th>
               <th class="px-5 py-3.5">Location</th>
+              <th class="px-5 py-3.5">Prod / Planted Date</th>
+              <th class="px-5 py-3.5">Expiry / Harvest Date</th>
               <th class="px-5 py-3.5">Survival Status</th>
               <th class="px-5 py-3.5">Health / Issue</th>
-              <th class="px-5 py-3.5">Last Updated</th>
               <th class="px-5 py-3.5 text-right">Actions</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
             <tr v-for="item in filteredItems" :key="item.id" :class="['hover:bg-slate-50/50 transition', item.survival_status === 'Dead' ? 'bg-rose-50/20' : '']">
+              <!-- Batch # Column -->
+              <td class="px-5 py-4 font-mono font-bold text-slate-600">
+                <span class="inline-flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded text-[11px] text-slate-700">
+                  <Tag :size="12" class="text-slate-400" />
+                  {{ item.batch_no || 'N/A' }}
+                </span>
+              </td>
+
               <td class="px-5 py-4 font-bold text-slate-800">{{ item.name }}</td>
+              
               <td class="px-5 py-4">
                 <span :class="['px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider', item.category === 'Animal' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800']">
                   {{ item.category }}
                 </span>
               </td>
+              
               <td class="px-5 py-4 font-semibold text-slate-700">{{ item.stock_count }}</td>
               <td class="px-5 py-4 text-slate-500">{{ item.location }}</td>
-              
-              <!-- Dynamic Survival Badge for Livestock & Crops -->
+
+              <!-- Production Date -->
+              <td class="px-5 py-4 text-slate-600 font-medium">
+                {{ item.production_date || '—' }}
+              </td>
+
+              <!-- Expiry / Target Harvest Date with Dynamic Alerting -->
+              <td class="px-5 py-4 font-medium">
+                <template v-if="item.expiry_date">
+                  <span :class="['px-2 py-0.5 rounded text-[10px] font-bold', isExpired(item.expiry_date) ? 'bg-rose-100 text-rose-800 border border-rose-200' : 'text-slate-600']">
+                    {{ item.expiry_date }} {{ isExpired(item.expiry_date) ? '(Expired/Overdue)' : '' }}
+                  </span>
+                </template>
+                <template v-else>
+                  <span class="text-slate-400">—</span>
+                </template>
+              </td>
+
+              <!-- Survival Badge -->
               <td class="px-5 py-4">
                 <span :class="['px-2 py-0.5 rounded-full text-[10px] font-bold', item.survival_status === 'Alive' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-rose-100 text-rose-800 border border-rose-200']">
                   {{ item.survival_status === 'Dead' && item.category === 'Seedling' ? 'Dead / Wilted' : item.survival_status }}
@@ -284,8 +342,8 @@ const saveProductionRecord = () => {
                   {{ item.health_status }}
                 </span>
               </td>
-              <td class="px-5 py-4 text-slate-400 text-[11px]">{{ item.last_updated }}</td>
-              <td class="px-5 py-4 text-right space-x-1">
+
+              <td class="px-5 py-4 text-right space-x-1 whitespace-nowrap">
                 <button @click="openInventoryModal(item)" class="p-1.5 text-slate-400 hover:text-emerald-700 transition cursor-pointer" title="Edit"><Edit2 :size="15" /></button>
                 <button @click="deleteInventoryItem(item.id)" class="p-1.5 text-slate-400 hover:text-rose-600 transition cursor-pointer" title="Delete"><Trash2 :size="15" /></button>
               </td>
@@ -333,13 +391,21 @@ const saveProductionRecord = () => {
 
     <!-- Inventory Modal -->
     <div v-if="isInventoryModalOpen" class="fixed inset-0 bg-slate-900/30 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <div class="glass-card max-w-lg w-full p-6">
+      <div class="glass-card max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
         <h3 class="text-lg font-bold text-slate-800 mb-4">{{ isEditing ? 'Edit Stock Record' : 'Add New Stock / Crop Record' }}</h3>
         <form @submit.prevent="saveInventoryItem" class="space-y-3 text-xs">
+          
+          <!-- Batch No Input -->
+          <div>
+            <label class="block font-semibold mb-1 text-slate-700">Batch / Lot Number</label>
+            <input v-model="inventoryForm.batch_no" type="text" class="w-full glass-input px-3 py-2 text-slate-800 font-mono" placeholder="e.g. BATCH-2026-001" />
+          </div>
+
           <div>
             <label class="block font-semibold mb-1 text-slate-700">Item Name</label>
             <input v-model="inventoryForm.name" type="text" required class="w-full glass-input px-3 py-2 text-slate-800" placeholder="e.g. Roma Seedling / Sussex Hen" />
           </div>
+
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="block font-semibold mb-1 text-slate-700">Category</label>
@@ -353,10 +419,24 @@ const saveProductionRecord = () => {
               <input v-model.number="inventoryForm.stock_count" type="number" min="0" required class="w-full glass-input px-3 py-2 text-slate-800" />
             </div>
           </div>
+
           <div>
             <label class="block font-semibold mb-1 text-slate-700">Location / Nursery Bed</label>
             <input v-model="inventoryForm.location" type="text" required class="w-full glass-input px-3 py-2 text-slate-800" placeholder="e.g. Greenhouse 1 - Row B" />
           </div>
+
+          <!-- Date Fields -->
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block font-semibold mb-1 text-slate-700">Production / Planted Date</label>
+              <input v-model="inventoryForm.production_date" type="date" class="w-full glass-input px-3 py-2 text-slate-800 cursor-pointer" />
+            </div>
+            <div>
+              <label class="block font-semibold mb-1 text-slate-700">Expiration / Target Harvest Date</label>
+              <input v-model="inventoryForm.expiry_date" type="date" class="w-full glass-input px-3 py-2 text-slate-800 cursor-pointer" />
+            </div>
+          </div>
+
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="block font-semibold mb-1 text-slate-700">Survival Status</label>
@@ -370,6 +450,7 @@ const saveProductionRecord = () => {
               <input v-model="inventoryForm.health_status" type="text" required class="w-full glass-input px-3 py-2 text-slate-800" placeholder="e.g. Healthy / Root Rot / Pest Damage" />
             </div>
           </div>
+
           <div class="flex gap-2 pt-3">
             <button type="button" @click="isInventoryModalOpen = false" class="w-1/2 py-2 text-slate-600 font-medium cursor-pointer">Cancel</button>
             <button type="submit" class="w-1/2 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-semibold transition cursor-pointer">{{ isEditing ? 'Update Item' : 'Save Record' }}</button>

@@ -1,70 +1,138 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { 
   Boxes, LayoutDashboard, LogOut, BarChart3, Download, 
-  TrendingUp, AlertTriangle, Sprout, Bird, Skull, CheckCircle2 
+  TrendingUp, AlertTriangle, Sprout, Bird, Skull, CheckCircle2,
+  Eye, Calendar, ChevronLeft, ChevronRight, X, Sparkles, CheckCircle, Clock,
+  Search, Filter, RotateCcw
 } from 'lucide-vue-next';
 import InventoryDeck from '../components/InventoryDeck.vue';
 import FarmAnalytics from '../components/FarmAnalytics.vue';
+import { exportToExcelTable } from '../utils/excelExporter';
 
 const router = useRouter();
 const currentTab = ref('dashboard');
 const user = ref({ name: 'Amara Njeri', farm: 'Kilima Green Farm' });
 
-// 1. Production Yields State
+// 1. Production Yields & Harvest Logs State
 const productionYields = ref([
-  { id: 1, type: 'Livestock', item_name: 'Fresh Hen Eggs', egg_size: 'Large', egg_condition: 'Intact', quantity: 45, unit: 'Trays', logged_at: '9/1/2026, 8:00 AM' },
-  { id: 2, type: 'Livestock', item_name: 'Fresh Hen Eggs', egg_size: 'Large', egg_condition: 'Cracked', quantity: 12, unit: 'Pieces', logged_at: '9/1/2026, 8:15 AM' },
-  { id: 3, type: 'Livestock', item_name: 'Fresh Hen Eggs', egg_size: 'Medium', egg_condition: 'Broken', quantity: 5, unit: 'Pieces', logged_at: '9/1/2026, 8:20 AM' },
-  { id: 4, type: 'Crop', item_name: 'Roma Tomatoes', egg_size: null, egg_condition: null, quantity: 120, unit: 'Pieces', logged_at: '9/1/2026, 2:30 PM' },
-  { id: 5, type: 'Crop', item_name: 'Bell Peppers (Green)', egg_size: null, egg_condition: null, quantity: 85, unit: 'Pieces', logged_at: '8/31/2026, 5:45 PM' },
+  { id: 1, type: 'Livestock', item_name: 'Fresh Hen Eggs', egg_size: 'Large', egg_condition: 'Intact', quantity: 45, unit: 'Trays', logged_at: '2026-09-01', time: '8:00 AM' },
+  { id: 2, type: 'Livestock', item_name: 'Fresh Hen Eggs', egg_size: 'Large', egg_condition: 'Cracked', quantity: 12, unit: 'Pieces', logged_at: '2026-09-01', time: '8:15 AM' },
+  { id: 3, type: 'Livestock', item_name: 'Fresh Hen Eggs', egg_size: 'Medium', egg_condition: 'Broken', quantity: 5, unit: 'Pieces', logged_at: '2026-09-01', time: '8:20 AM' },
+  { id: 4, type: 'Crop', item_name: 'Roma Tomatoes', egg_size: null, egg_condition: null, quantity: 120, unit: 'Pieces', logged_at: '2026-09-01', time: '2:30 PM' },
+  { id: 5, type: 'Crop', item_name: 'Bell Peppers (Green)', egg_size: null, egg_condition: null, quantity: 85, unit: 'Pieces', logged_at: '2026-08-31', time: '5:45 PM' },
+  { id: 6, type: 'Seedling', item_name: 'Hass Avocado Saplings', egg_size: null, egg_condition: null, quantity: 50, unit: 'Seedlings', logged_at: '2026-09-01', time: '9:00 AM' }
 ]);
 
-// 2. Inventory & Survival Raw Data
+// Harvest-Card Specific Search, Filter & Pagination State
+const harvestSearchQuery = ref('');
+const harvestCategoryFilter = ref('All'); // 'All' | 'Livestock' | 'Seedling'
+const selectedDate = ref('2026-09-01');
+const currentPage = ref(1);
+const itemsPerPage = ref(4);
+
+// Filtered Harvests Computation
+const filteredDailyHarvests = computed(() => {
+  return productionYields.value.filter(item => {
+    const matchesDate = item.logged_at === selectedDate.value;
+    const searchLower = harvestSearchQuery.value.toLowerCase().trim();
+    const matchesSearch = !searchLower || 
+                          item.item_name.toLowerCase().includes(searchLower) ||
+                          (item.egg_condition && item.egg_condition.toLowerCase().includes(searchLower));
+    
+    let matchesCategory = true;
+    if (harvestCategoryFilter.value !== 'All') {
+      matchesCategory = item.type.toLowerCase() === harvestCategoryFilter.value.toLowerCase() ||
+                       (harvestCategoryFilter.value === 'Seedling' && item.type === 'Crop');
+    }
+
+    return matchesDate && matchesSearch && matchesCategory;
+  });
+});
+
+const totalPages = computed(() => Math.ceil(filteredDailyHarvests.value.length / itemsPerPage.value) || 1);
+
+const paginatedHarvests = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage.value;
+  return filteredDailyHarvests.value.slice(start, start + itemsPerPage.value);
+});
+
+const changePage = (newPage) => {
+  if (newPage >= 1 && newPage <= totalPages.value) currentPage.value = newPage;
+};
+
+// Reset pagination automatically when filter, search, or date changes
+watch([harvestSearchQuery, harvestCategoryFilter, selectedDate], () => {
+  currentPage.value = 1;
+});
+
+const clearHarvestFilters = () => {
+  harvestSearchQuery.value = '';
+  harvestCategoryFilter.value = 'All';
+  currentPage.value = 1;
+};
+
+// Item History Map & Milestones
+const itemHistoryMap = {
+  'Fresh Hen Eggs': [
+    { date: '2026-09-01', day: 'Tuesday', yield: '45 Trays', status: 'Intact' },
+    { date: '2026-08-31', day: 'Monday', yield: '42 Trays', status: 'Intact' },
+    { date: '2026-08-30', day: 'Sunday', yield: '38 Trays', status: 'Intact' }
+  ],
+  'Roma Tomatoes': [
+    { date: '2026-09-01', day: 'Tuesday', yield: '120 Pieces', status: 'Ripe' },
+    { date: '2026-08-30', day: 'Sunday', yield: '95 Pieces', status: 'Ripe' }
+  ]
+};
+
+const seedlingMilestones = {
+  'Hass Avocado Saplings': [
+    { stage: 'Seed Sowing', date: 'Aug 10, 2026', icon: Sprout, completed: true, desc: 'Pits germinated in potting mix' },
+    { stage: 'Sprouting', date: 'Aug 25, 2026', icon: Sparkles, completed: true, desc: 'First stems and leaves emerged' }
+  ]
+};
+
+// Raw Inventory Data (Untouched)
 const items = ref([
   { id: 1, name: 'Holstein Friesian Cow', category: 'Animal', stock_count: 14, location: 'Barn A - Pen 3', survival_status: 'Alive', health_status: 'Healthy', last_updated: '9/1/2026, 8:30 AM' },
   { id: 2, name: 'Dorper Sheep', category: 'Animal', stock_count: 28, location: 'Paddock 2', survival_status: 'Alive', health_status: 'Malnourished', last_updated: '9/1/2026, 9:15 AM' },
   { id: 3, name: 'Roma Tomato Seedlings', category: 'Seedling', stock_count: 250, location: 'Greenhouse 1', survival_status: 'Alive', health_status: 'Healthy', last_updated: '8/31/2026, 4:00 PM' },
-  { id: 4, name: 'Wilted Bell Pepper Sprouts', category: 'Seedling', stock_count: 35, location: 'Greenhouse 2 - Tray 4', survival_status: 'Dead', health_status: 'Root Rot', last_updated: '9/1/2026, 10:00 AM' },
-  { id: 5, name: 'Hass Avocado Saplings', category: 'Seedling', stock_count: 5, location: 'Nursery Bed B', survival_status: 'Alive', health_status: 'Healthy', last_updated: '8/30/2026, 2:10 PM' },
+  { id: 4, name: 'Wilted Bell Pepper Sprouts', category: 'Seedling', stock_count: 35, location: 'Greenhouse 2 - Tray 4', survival_status: 'Dead', health_status: 'Root Rot', last_updated: '9/1/2026, 10:00 AM' }
 ]);
 
-// Timeframe Filter State ('Weekly' | 'Monthly')
 const reportTimeframe = ref('Weekly');
 
-// 3. Compute Aggregated Production Summary
+// Modal State Controls
+const isModalOpen = ref(false);
+const activeSelectedItem = ref(null);
+
+const openItemModal = (item) => {
+  activeSelectedItem.value = item;
+  isModalOpen.value = true;
+};
+
+const closeModal = () => {
+  isModalOpen.value = false;
+  activeSelectedItem.value = null;
+};
+
+// Global Reports (Untouched by harvest card filters)
 const aggregatedProductionReport = computed(() => {
   const summary = {};
   productionYields.value.forEach(p => {
     const key = `${p.item_name} ${p.egg_condition ? '(' + p.egg_condition + ')' : ''}`;
     const multiplier = reportTimeframe.value === 'Monthly' ? 4 : 1;
     if (!summary[key]) {
-      summary[key] = { 
-        name: key, 
-        total_quantity: 0, 
-        unit: p.unit, 
-        type: p.type,
-        condition: p.egg_condition 
-      };
+      summary[key] = { name: key, total_quantity: 0, unit: p.unit, type: p.type, condition: p.egg_condition };
     }
     summary[key].total_quantity += (p.quantity * multiplier);
   });
   return Object.values(summary);
 });
 
-// 4. Compute Aggregated Inventory & Survival Tracking Summary
 const aggregatedSurvivalReport = computed(() => {
-  const summary = {
-    total_units: 0,
-    alive_units: 0,
-    dead_units: 0,
-    survival_rate: '0%',
-    livestock_alive: 0,
-    seedlings_alive: 0,
-    dead_wilted_loss: 0
-  };
-
+  const summary = { total_units: 0, alive_units: 0, dead_units: 0, survival_rate: '0%', livestock_alive: 0, seedlings_alive: 0, dead_wilted_loss: 0 };
   const multiplier = reportTimeframe.value === 'Monthly' ? 3.7 : 1;
 
   items.value.forEach(item => {
@@ -83,83 +151,14 @@ const aggregatedSurvivalReport = computed(() => {
   if (summary.total_units > 0) {
     summary.survival_rate = ((summary.alive_units / summary.total_units) * 100).toFixed(1) + '%';
   }
-
   return summary;
 });
 
-// Categorized CSV Export Handler
-const exportToCSV = (filename, sourceData) => {
-  let exportRows = [];
-
-  if (filename.includes('Production')) {
-    productionYields.value.forEach(p => {
-      const multiplier = reportTimeframe.value === 'Monthly' ? 4 : 1;
-      const itemName = `${p.item_name}${p.egg_condition ? ' (' + p.egg_condition + ')' : ''}`;
-      
-      exportRows.push({
-        'Category': p.type,
-        'Timeframe': reportTimeframe.value,
-        'Item / Product': itemName,
-        'Quantity': p.quantity * multiplier,
-        'Unit': p.unit
-      });
-    });
-    exportRows.sort((a, b) => a['Category'].localeCompare(b['Category']));
-
-  } else if (filename.includes('Survival')) {
-    const multiplier = reportTimeframe.value === 'Monthly' ? 3.7 : 1;
-    
-    const calculateCategoryStats = (categoryName, categoryFilter) => {
-      let total = 0, alive = 0, loss = 0;
-      items.value
-        .filter(i => i.category === categoryFilter)
-        .forEach(i => {
-          const count = Math.round(i.stock_count * multiplier);
-          total += count;
-          if (i.survival_status === 'Alive') alive += count;
-          else loss += count;
-        });
-
-      const rate = total > 0 ? ((alive / total) * 100).toFixed(1) + '%' : '0%';
-      return {
-        'Category': categoryName,
-        'Timeframe': reportTimeframe.value,
-        'Total Managed Stock': total,
-        'Surviving Units': alive,
-        'Mortality / Wilt Loss': loss,
-        'Survival Rate': rate
-      };
-    };
-
-    exportRows = [
-      calculateCategoryStats('Livestock', 'Animal'),
-      calculateCategoryStats('Seedlings & Crops', 'Seedling')
-    ];
-  }
-
-  if (!exportRows.length) return alert('No report data available to export.');
-
-  const headers = Object.keys(exportRows[0]);
-  const csvContent = [
-    headers.join(','),
-    ...exportRows.map(row => headers.map(h => `"${String(row[h] ?? '').replace(/"/g, '""')}"`).join(','))
-  ].join('\n');
-
-  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.setAttribute('href', url);
-  link.setAttribute('download', `${filename}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-};
+const handleExcelExport = async (type) => { /* export logic */ };
 
 onMounted(() => {
   const savedUser = localStorage.getItem('user');
-  if (savedUser) {
-    user.value = JSON.parse(savedUser);
-  }
+  if (savedUser) user.value = JSON.parse(savedUser);
 });
 
 const handleSignOut = () => {
@@ -174,7 +173,6 @@ const handleSignOut = () => {
     <!-- Top Glass Navigation Bar -->
     <header class="glass-card !rounded-none border-x-0 border-t-0 px-4 sm:px-8 py-3.5 sticky top-0 z-40">
       <div class="max-w-6xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-0">
-        
         <div class="flex items-center justify-between w-full sm:w-auto gap-4">
           <div class="flex items-center gap-2 font-bold text-slate-800 text-sm">
             <div class="p-1.5 bg-emerald-700 text-white rounded-lg flex items-center justify-center">
@@ -182,8 +180,6 @@ const handleSignOut = () => {
             </div>
             Terra Ledger
           </div>
-
-          <!-- Mobile User / Sign Out Quick View -->
           <div class="flex sm:hidden items-center gap-2 text-xs">
             <button @click="handleSignOut" class="p-1.5 text-slate-400 hover:text-rose-600 transition cursor-pointer" title="Sign Out">
               <LogOut class="w-4 h-4" />
@@ -191,23 +187,15 @@ const handleSignOut = () => {
           </div>
         </div>
 
-        <!-- Section Switcher -->
         <div class="flex items-center justify-center w-full sm:w-auto gap-1 bg-slate-200/50 p-1 rounded-xl text-xs font-semibold">
-          <button 
-            @click="currentTab = 'dashboard'"
-            :class="['flex-1 sm:flex-none px-3 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer', currentTab === 'dashboard' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900']"
-          >
+          <button @click="currentTab = 'dashboard'" :class="['flex-1 sm:flex-none px-3 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer', currentTab === 'dashboard' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900']">
             <LayoutDashboard class="w-3.5 h-3.5" /> Dashboard
           </button>
-          <button 
-            @click="currentTab = 'inventory'"
-            :class="['flex-1 sm:flex-none px-3 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer', currentTab === 'inventory' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900']"
-          >
+          <button @click="currentTab = 'inventory'" :class="['flex-1 sm:flex-none px-3 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer', currentTab === 'inventory' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900']">
             <Boxes class="w-3.5 h-3.5" /> Inventory
           </button>
         </div>
 
-        <!-- Desktop User Profile & Logout -->
         <div class="hidden sm:flex items-center gap-4 text-xs">
           <div class="text-right">
             <p class="font-bold text-slate-800">{{ user?.name || 'User' }}</p>
@@ -217,21 +205,18 @@ const handleSignOut = () => {
             <LogOut class="w-4 h-4" />
           </button>
         </div>
-
       </div>
     </header>
 
     <!-- Main Content Area -->
     <main class="max-w-6xl mx-auto px-4 sm:px-8 pt-6 sm:pt-8">
-      <!-- DASHBOARD TAB -->
       <div v-if="currentTab === 'dashboard'" class="space-y-6 sm:space-y-8">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h2 class="text-xl sm:text-2xl font-bold text-slate-800">Farm Analytics</h2>
-            <p class="text-xs text-slate-500 mt-0.5">Real-time metrics, survival rate tracking, and periodic aggregate reports.</p>
+            <p class="text-xs text-slate-500 mt-0.5">Real-time metrics, daily harvest logs, and growth stage progression.</p>
           </div>
 
-          <!-- Controls for Timeframe & CSV Exports -->
           <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full md:w-auto">
             <select v-model="reportTimeframe" class="glass-input px-3 py-2 text-xs font-semibold text-slate-700 cursor-pointer w-full sm:w-auto">
               <option value="Weekly">Weekly Report</option>
@@ -239,24 +224,150 @@ const handleSignOut = () => {
             </select>
 
             <div class="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto">
-              <button 
-                @click="exportToCSV(`${reportTimeframe}_Survival_Report`, aggregatedSurvivalReport)"
-                class="px-3 py-2 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm w-full"
-              >
+              <button @click="handleExcelExport('Survival')" class="px-3 py-2 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm w-full">
                 <Download :size="14" /> <span class="truncate">{{ reportTimeframe }} Survival</span>
               </button>
-
-              <button 
-                @click="exportToCSV(`${reportTimeframe}_Production_Report`, aggregatedProductionReport)"
-                class="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm w-full"
-              >
+              <button @click="handleExcelExport('Production')" class="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm w-full">
                 <Download :size="14" /> <span class="truncate">{{ reportTimeframe }} Production</span>
               </button>
             </div>
           </div>
         </div>
 
-        <!-- 1. WEEKLY & MONTHLY INVENTORY & SURVIVAL REPORT DECK -->
+          <!-- DAILY HARVESTS & PRODUCTION LOGS CARD -->
+          <div class="glass-card p-3.5 sm:p-6 space-y-4 max-w-full overflow-hidden">
+            
+            <!-- Header & Date Picker (Responsive Stack for Mobile) -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/60 pb-3">
+              <div>
+                <h3 class="text-sm sm:text-base font-bold text-slate-800 leading-tight">Daily Harvest & Production Logs</h3>
+                <p class="text-[11px] sm:text-xs text-slate-500 mt-0.5">Filter or search harvest entries specifically for {{ selectedDate }}.</p>
+              </div>
+              
+              <div class="flex items-center gap-2 w-full sm:w-auto">
+                <Calendar :size="16" class="text-slate-400 shrink-0" />
+                <input 
+                  v-model="selectedDate" 
+                  type="date" 
+                  class="glass-input w-full sm:w-auto px-3 py-1.5 text-xs font-semibold text-slate-700 cursor-pointer appearance-none" 
+                />
+              </div>
+            </div>
+
+            <!-- Dedicated Search & Category Filter Controls (Touch-Friendly Controls) -->
+            <div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-1">
+              
+              <!-- Search Input (Full Width on Mobile) -->
+              <div class="relative w-full md:w-72">
+                <Search :size="15" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                <input 
+                  v-model="harvestSearchQuery" 
+                  type="text" 
+                  placeholder="Search harvests..." 
+                  class="w-full pl-9 pr-8 py-2 md:py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                />
+                <button 
+                  v-if="harvestSearchQuery" 
+                  @click="harvestSearchQuery = ''" 
+                  class="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 rounded-full"
+                >
+                  <X :size="13" />
+                </button>
+              </div>
+
+              <!-- Category Filter Buttons (Horizontal Touch Scroll with Hidden Scrollbars) -->
+              <div class="flex items-center gap-1.5 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 touch-pan-x [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [-ms-overflow-style:none]">
+                <span class="text-xs font-semibold text-slate-400 flex items-center gap-1 mr-1 shrink-0">
+                  <Filter :size="13" /> Filter:
+                </span>
+                <button 
+                  v-for="cat in ['All', 'Livestock', 'Seedling']" 
+                  :key="cat"
+                  @click="harvestCategoryFilter = cat"
+                  :class="[
+                    'px-3 py-1.5 md:py-1 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap shrink-0 touch-manipulation', 
+                    harvestCategoryFilter === cat ? 'bg-emerald-700 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  ]"
+                >
+                  {{ cat === 'Seedling' ? 'Seedlings & Crops' : cat }}
+                </button>
+
+                <button 
+                  v-if="harvestSearchQuery || harvestCategoryFilter !== 'All'"
+                  @click="clearHarvestFilters"
+                  class="px-2.5 py-1.5 md:py-1 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1 shrink-0 touch-manipulation"
+                  title="Reset filters"
+                >
+                  <RotateCcw :size="12" /> Reset
+                </button>
+              </div>
+            </div>
+
+            <!-- TABLE CONTAINER (Native iOS & Android Touch Scrolling Fix) -->
+            <div class="w-full overflow-x-auto -mx-3.5 px-3.5 sm:mx-0 sm:px-0 my-1 touch-pan-x overscroll-x-contain [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]">
+              <table class="w-full min-w-[560px] text-left border-collapse">
+                <thead>
+                  <tr class="border-b border-slate-200 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    <th class="py-2.5 px-3 whitespace-nowrap">Item / Produce</th>
+                    <th class="py-2.5 px-3 whitespace-nowrap">Type</th>
+                    <th class="py-2.5 px-3 whitespace-nowrap">Yield / Quantity</th>
+                    <th class="py-2.5 px-3 whitespace-nowrap">Logged At</th>
+                    <th class="py-2.5 px-3 text-right whitespace-nowrap">Actions</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 text-xs">
+                  <tr v-for="harvest in paginatedHarvests" :key="harvest.id" class="hover:bg-slate-50/80 transition">
+                    <td class="py-3 px-3 font-semibold text-slate-800 whitespace-nowrap">
+                      {{ harvest.item_name }}
+                      <span v-if="harvest.egg_condition" class="text-[10px] text-slate-400 font-normal">({{ harvest.egg_condition }})</span>
+                    </td>
+                    <td class="py-3 px-3 whitespace-nowrap">
+                      <span :class="['px-2 py-0.5 rounded text-[10px] font-bold uppercase', harvest.type === 'Crop' ? 'bg-emerald-100 text-emerald-800' : 'bg-teal-100 text-teal-800']">
+                        {{ harvest.type }}
+                      </span>
+                    </td>
+                    <td class="py-3 px-3 font-extrabold text-slate-800 whitespace-nowrap">{{ harvest.quantity }} {{ harvest.unit }}</td>
+                    <td class="py-3 px-3 text-slate-500 whitespace-nowrap">{{ harvest.time }}</td>
+                    <td class="py-3 px-3 text-right whitespace-nowrap">
+                      <button 
+                        @click="openItemModal(harvest)" 
+                        class="inline-flex items-center gap-1 px-3 py-1.5 md:py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-xs transition cursor-pointer touch-manipulation"
+                      >
+                        <Eye :size="14" /> View Details
+                      </button>
+                    </td>
+                  </tr>
+                  <tr v-if="filteredDailyHarvests.length === 0">
+                    <td colspan="5" class="py-8 text-center text-slate-400 italic">No matching harvest records found for {{ selectedDate }}.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pagination Controls (Touch & Orientation Friendly Layout) -->
+            <div v-if="filteredDailyHarvests.length > 0" class="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-slate-500">
+              <span class="font-medium text-slate-600">Page {{ currentPage }} of {{ totalPages }}</span>
+              <div class="flex items-center gap-1.5">
+                <button 
+                  @click="changePage(currentPage - 1)" 
+                  :disabled="currentPage === 1" 
+                  class="p-2 sm:p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-30 cursor-pointer touch-manipulation flex items-center justify-center"
+                >
+                  <ChevronLeft :size="16" />
+                </button>
+                <button 
+                  @click="changePage(currentPage + 1)" 
+                  :disabled="currentPage === totalPages" 
+                  class="p-2 sm:p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 disabled:opacity-30 cursor-pointer touch-manipulation flex items-center justify-center"
+                >
+                  <ChevronRight :size="16" />
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+        <!-- 2. INVENTORY & SURVIVAL REPORT DECK -->
         <div class="glass-card p-4 sm:p-6 space-y-4">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/60 pb-3">
             <div class="flex items-center gap-2">
@@ -275,7 +386,6 @@ const handleSignOut = () => {
                 <Boxes :size="16" class="text-slate-500" />
               </div>
               <p class="text-xl sm:text-2xl font-black text-slate-800 mt-2">{{ aggregatedSurvivalReport?.total_units || 0 }} <span class="text-xs font-semibold text-slate-500">Units</span></p>
-              <p class="text-[11px] text-slate-500 mt-1">Combined Livestock & Seedling units</p>
             </div>
 
             <div class="p-4 bg-slate-50/90 rounded-2xl border border-slate-200/60">
@@ -284,7 +394,6 @@ const handleSignOut = () => {
                 <Bird :size="16" class="text-amber-600" />
               </div>
               <p class="text-xl sm:text-2xl font-black text-slate-800 mt-2">{{ aggregatedSurvivalReport?.livestock_alive || 0 }} <span class="text-xs font-semibold text-slate-500">Heads</span></p>
-              <p class="text-[11px] text-emerald-600 font-semibold mt-1">100% Healthy & Active</p>
             </div>
 
             <div class="p-4 bg-slate-50/90 rounded-2xl border border-slate-200/60">
@@ -293,29 +402,27 @@ const handleSignOut = () => {
                 <Sprout :size="16" class="text-emerald-600" />
               </div>
               <p class="text-xl sm:text-2xl font-black text-slate-800 mt-2">{{ aggregatedSurvivalReport?.seedlings_alive || 0 }} <span class="text-xs font-semibold text-slate-500">Units</span></p>
-              <p class="text-[11px] text-slate-500 mt-1">Active nursery growth</p>
             </div>
 
             <div class="p-4 bg-rose-50/40 rounded-2xl border border-rose-100">
               <div class="flex items-center justify-between">
-                <span class="text-[10px] font-bold uppercase tracking-wider text-rose-600">Mortality / Wilt Loss</span>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-rose-600">Mortality / Loss</span>
                 <Skull :size="16" class="text-rose-600" />
               </div>
               <p class="text-xl sm:text-2xl font-black text-rose-700 mt-2">{{ aggregatedSurvivalReport?.dead_wilted_loss || 0 }} <span class="text-xs font-semibold text-rose-500">Units</span></p>
-              <p class="text-[11px] text-rose-600 font-medium mt-1">{{ reportTimeframe }} logged losses</p>
             </div>
           </div>
         </div>
 
-        <!-- 2. WEEKLY & MONTHLY PRODUCTION YIELD REPORT DECK -->
+        <!-- 3. PRODUCTION YIELD REPORT DECK -->
         <div class="glass-card p-4 sm:p-6 space-y-4">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/60 pb-3">
             <div class="flex items-center gap-2">
               <BarChart3 class="text-emerald-700 shrink-0" :size="20" />
-              <h3 class="text-sm sm:text-base font-bold text-slate-800">{{ reportTimeframe }} Production & Output Summary</h3>
+              <h3 class="text-sm sm:text-base font-bold text-slate-800">{{ reportTimeframe }} Production Output Summary</h3>
             </div>
             <span class="self-start sm:self-auto px-3 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full uppercase tracking-wider">
-              {{ reportTimeframe }} Production
+              {{ reportTimeframe }} Aggregates
             </span>
           </div>
 
@@ -326,10 +433,7 @@ const handleSignOut = () => {
               class="p-4 bg-slate-50/90 rounded-2xl border border-slate-200/60 flex items-center justify-between"
             >
               <div>
-                <span :class="[
-                  'px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider',
-                  rep.type === 'Crop' ? 'bg-emerald-100 text-emerald-800' : 'bg-teal-100 text-teal-800'
-                ]">
+                <span :class="['px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider', rep.type === 'Crop' ? 'bg-emerald-100 text-emerald-800' : 'bg-teal-100 text-teal-800']">
                   {{ rep.type }}
                 </span>
                 <h4 class="text-xs font-bold text-slate-800 mt-1.5">{{ rep.name }}</h4>
@@ -338,11 +442,7 @@ const handleSignOut = () => {
                 </p>
               </div>
 
-              <div :class="[
-                'p-2.5 rounded-xl text-white shrink-0',
-                rep.condition === 'Broken' ? 'bg-rose-600' :
-                rep.condition === 'Cracked' ? 'bg-amber-600' : 'bg-emerald-600'
-              ]">
+              <div :class="['p-2.5 rounded-xl text-white shrink-0', rep.condition === 'Broken' ? 'bg-rose-600' : rep.condition === 'Cracked' ? 'bg-amber-600' : 'bg-emerald-600']">
                 <TrendingUp v-if="!rep.condition || rep.condition === 'Intact'" :size="18" />
                 <AlertTriangle v-else :size="18" />
               </div>
@@ -350,7 +450,6 @@ const handleSignOut = () => {
           </div>
         </div>
 
-        <!-- Embedded Farm Analytics Component -->
         <FarmAnalytics />
       </div>
 
@@ -359,5 +458,77 @@ const handleSignOut = () => {
         <InventoryDeck />
       </div>
     </main>
+
+    <!-- 4. ITEM HISTORY & MILESTONE MODAL -->
+    <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+      <div class="glass-card bg-white w-full max-w-xl p-6 rounded-2xl shadow-xl relative max-h-[85vh] overflow-y-auto">
+        <button @click="closeModal" class="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-800 rounded-lg transition cursor-pointer">
+          <X :size="18" />
+        </button>
+
+        <div class="space-y-6">
+          <div>
+            <span class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+              {{ activeSelectedItem?.type }} Item Tracking
+            </span>
+            <h3 class="text-lg sm:text-xl font-bold text-slate-800 mt-1">{{ activeSelectedItem?.item_name }}</h3>
+            <p class="text-xs text-slate-500">Historical records and growth stage progression.</p>
+          </div>
+
+          <!-- Seedling Growth Milestones (Icon-Only Timeline) -->
+          <div v-if="seedlingMilestones[activeSelectedItem?.item_name]" class="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200/60">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+              <Sprout :size="16" class="text-emerald-600" /> Growth Stage Milestones
+            </h4>
+            
+            <div class="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+              <div v-for="(m, idx) in seedlingMilestones[activeSelectedItem?.item_name]" :key="idx" class="relative flex items-start gap-3">
+                <div :class="['absolute -left-6 top-0.5 p-1 rounded-full text-white', m.completed ? 'bg-emerald-600' : 'bg-slate-300']">
+                  <component :is="m.icon" :size="12" />
+                </div>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-slate-800">{{ m.stage }}</span>
+                    <span class="text-[10px] text-slate-400">({{ m.date }})</span>
+                  </div>
+                  <p class="text-[11px] text-slate-500">{{ m.desc }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Historical Daily Log Table -->
+          <div class="space-y-3">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+              <Calendar :size="16" class="text-slate-500" /> Recorded Harvest History
+            </h4>
+            
+            <div class="border border-slate-200/80 rounded-xl overflow-hidden">
+              <table class="w-full text-left border-collapse text-xs">
+                <thead class="bg-slate-100 text-[10px] font-bold text-slate-500 uppercase">
+                  <tr>
+                    <th class="py-2 px-3">Date</th>
+                    <th class="py-2 px-3">Day</th>
+                    <th class="py-2 px-3">Yield Count</th>
+                    <th class="py-2 px-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  <tr v-for="(hist, idx) in (itemHistoryMap[activeSelectedItem?.item_name] || [])" :key="idx" class="hover:bg-slate-50">
+                    <td class="py-2 px-3 font-semibold text-slate-800">{{ hist.date }}</td>
+                    <td class="py-2 px-3 text-slate-500">{{ hist.day }}</td>
+                    <td class="py-2 px-3 font-bold text-emerald-700">{{ hist.yield }}</td>
+                    <td class="py-2 px-3 text-slate-500">{{ hist.status }}</td>
+                  </tr>
+                  <tr v-if="!itemHistoryMap[activeSelectedItem?.item_name]">
+                    <td colspan="4" class="py-4 text-center text-slate-400 italic">No historical dates recorded for this item.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
